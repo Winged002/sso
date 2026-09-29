@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% from '_components.html' import page_header %}
+{% block content %}
+{{ page_header('Settings','My account','Manage your profile and strong authentication methods.') }}
+<section class="content-grid two">
+  <article class="card form-card">
+    <div class="card-head"><h2>Profile</h2></div>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Name<input name="name" value="{{ current_user.name or '' }}"></label>
+      <label>Email<input value="{{ current_user.email or '' }}" disabled></label>
+      <div class="form-actions"><button class="primary">Save account</button></div>
+    </form>
+  </article>
+  <article class="card security-summary">
+    <div class="card-head"><h2>Security status</h2></div>
+    <div class="security-status-row"><span>Authenticator MFA</span><span class="badge {{ 'active' if totp_configured else '' }}">{{ 'enabled' if totp_configured else 'not configured' }}</span></div>
+    <div class="security-status-row"><span>Passkeys</span><span class="badge {{ 'active' if passkeys else '' }}">{{ passkeys|length }} registered</span></div>
+    <div class="security-status-row"><span>Current assurance</span><span class="badge">{{ session.get('acr','urn:syntal:loa:1')|replace('urn:syntal:loa:','AAL') }}</span></div>
+  </article>
+</section>
+
+<section class="content-grid two security-section" id="security" data-passkey-surface>
+  <article class="card form-card">
+    <div class="card-head"><div><h2>Authenticator MFA</h2><small>Time-based one-time password (TOTP)</small></div><span class="badge {{ 'active' if totp_configured else '' }}">{{ 'enabled' if totp_configured else 'off' }}</span></div>
+    {% if totp_configured and totp_readable %}
+      <p class="muted-copy">Password sign-in requires a second factor. This factor can also be used for security step-up.</p>
+      <form method="post" action="{{ url_for('auth.totp_disable') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Current authentication code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required></label>
+        <div class="form-actions"><button class="button danger" type="submit">Disable authenticator MFA</button></div>
+      </form>
+    {% elif totp_configured and not totp_readable %}
+      <div class="flash warning">MFA is marked enabled in the existing account record, but its stored seed could not be read. The setting has not been changed. Existing pre-v3 encrypted seeds are supported by this release; verify the account encryption key if this warning appears.</div>
+      <form method="post" action="{{ url_for('auth.totp_begin') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button" type="submit">Start TOTP re-enrollment</button></form>
+    {% elif not totp_setup_secret %}
+      <p class="muted-copy">Add an authenticator app. Once enabled, password login requires the six-digit code.</p>
+      <form method="post" action="{{ url_for('auth.totp_begin') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button" type="submit">Set up authenticator</button></form>
+    {% endif %}
+
+    {% if totp_setup_secret %}
+      <div class="setup-box">
+        <strong>1. Add this account to your authenticator</strong>
+        <p>Issuer: Syntal · Account: {{ current_user.email }}</p>
+        <code class="secret-code">{{ totp_setup_secret }}</code>
+        <details><summary>Authenticator URI</summary><code class="uri-code">{{ totp_setup_uri }}</code></details>
+        <strong>2. Confirm a code</strong>
+        <form method="post" action="{{ url_for('auth.totp_confirm') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label>Six-digit code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required></label>
+          <div class="form-actions"><button class="primary" type="submit">Enable MFA</button></div>
+        </form>
+      </div>
+    {% endif %}
+  </article>
+
+  <article class="card form-card">
+    <div class="card-head"><div><h2>Passkeys</h2><small>Device passkeys and security keys</small></div><span class="badge {{ 'active' if passkeys else '' }}">{{ passkeys|length }} registered</span></div>
+    {% if passkey_ready %}
+      <p class="muted-copy">Passkeys can sign you in without a password and satisfy AAL2 for protected application authorization.</p>
+      <input type="hidden" value="{{ csrf_token() }}" data-csrf-token>
+      <div class="inline-fields"><input type="text" placeholder="Passkey name, e.g. MacBook" data-passkey-name><button class="button" type="button" data-passkey-register>Add passkey</button></div>
+      <div class="auth-inline-status" data-passkey-status aria-live="polite"></div>
+      <div class="passkey-list">
+      {% for item in passkeys %}
+        <div class="passkey-row"><div><strong>{{ item.name }}</strong><small>{{ item.collection }}{% if item.last_used %} · Last used {{ item.last_used }}{% endif %}</small></div><form method="post" action="{{ url_for('auth.passkey_delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="collection" value="{{ item.collection }}"><input type="hidden" name="record_id" value="{{ item.record_id }}"><button class="tiny subtle" type="submit">Remove</button></form></div>
+      {% else %}<div class="empty-state compact"><strong>No passkeys registered</strong><p>Add one to enable passwordless sign-in.</p></div>{% endfor %}
+      </div>
+    {% else %}
+      <div class="flash warning">The WebAuthn server library is not installed. Rebuild the v3.0.2 image so passkey support can load.</div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

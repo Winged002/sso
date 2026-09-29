@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block auth_content %}
+<section class="auth-card" data-passkey-surface>
+  <div class="auth-brand"><span class="auth-star">✦</span><strong>Syntal</strong></div>
+  <h1>Sign in</h1>
+  <p>Use your password, or sign in with a registered passkey.</p>
+  {% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+  <form method="post" class="auth-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" data-csrf-token>
+    <input type="hidden" name="next" value="{{ next_url or '' }}">{% if invitation_id %}<input type="hidden" name="invitation" value="{{ invitation_id }}">{% endif %}
+    <label>Email<input type="email" name="email" autocomplete="email webauthn" required data-passkey-email></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+  </form>
+  {% if passkey_ready %}
+  <div class="auth-divider"><span>or</span></div>
+  <button class="button passkey-button" type="button" data-passkey-login data-next="{{ next_url or '' }}">Sign in with passkey</button>
+  <div class="auth-inline-status" data-passkey-status aria-live="polite"></div>
+  {% endif %}
+  {% if invitation_id %}<div class="auth-divider"><span>new to Syntal?</span></div><a class="button block" href="{{ url_for('auth.register',invitation=invitation_id) }}">Create account for this invitation</a>{% endif %}<footer>SSO v{{ app_version }}</footer>
+</section>
+{% endblock %}

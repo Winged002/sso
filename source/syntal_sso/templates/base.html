@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#081322">
+  <title>{{ title or 'Syntal' }} · Syntal</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='v3.css') }}">
+</head>
+<body class="{% if current_user and not standalone_auth|default(false) %}admin-shell{% else %}auth-shell{% endif %}">
+<div class="ambient-layer" aria-hidden="true"><span class="ambient-orb orb-a"></span><span class="ambient-orb orb-b"></span><span class="ambient-grid"></span></div>
+{% if current_user and not standalone_auth|default(false) %}
+<div class="mobile-backdrop" data-mobile-backdrop></div>
+<aside class="primary-rail glass-shell" aria-label="Main navigation">
+  <a class="brand-mark" href="{{ url_for('organizations.dashboard') }}" aria-label="Syntal home"><svg viewBox="0 0 100 100"><path d="M50 5 L61 39 L95 50 L61 61 L50 95 L39 61 L5 50 L39 39 Z"/></svg></a>
+  <nav>{% for item in navigation.primary %}<a class="rail-item {{ 'active' if navigation.category==item.key else '' }}" href="{{ item.href }}"><span class="rail-icon">{{ item.label[:1] }}</span><span>{{ item.label }}</span></a>{% endfor %}</nav>
+  <form method="post" action="{{ url_for('auth.logout') }}" class="rail-bottom"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="rail-item ghost"><span class="rail-icon">↗</span><span>Sign out</span></button></form>
+</aside>
+<aside class="secondary-panel glass-shell" data-secondary-panel>
+  <div class="secondary-head">
+    <div class="workspace-label"><span class="brand-pulse"></span>Syntal Identity</div>
+    {% if current_org %}<a class="org-switcher glass-control" href="{{ url_for('organizations.index') }}"><span class="org-avatar">{{ (current_org.display_name or current_org.name or 'O')[:1] }}</span><span><strong>{{ current_org.display_name or current_org.name }}</strong><small>Switch organization</small></span><span class="chevron">›</span></a>{% else %}<a class="org-switcher empty glass-control" href="{{ url_for('organizations.index') }}"><span class="org-avatar">+</span><span><strong>Select organization</strong><small>Choose a workspace</small></span><span class="chevron">›</span></a>{% endif %}
+  </div>
+  <div class="secondary-title">{{ navigation.category|replace('_',' ')|title }}</div>
+  <nav class="secondary-nav">{% for item in navigation.secondary %}<a class="{{ 'active' if navigation.active==item.key else '' }}" href="{{ item.href }}"><span>{{ item.label }}</span><span>›</span></a>{% endfor %}</nav>
+  <div class="version"><span class="version-dot"></span>Syntal SSO v{{ app_version }}</div>
+</aside>
+<div class="workspace-frame">
+  <header class="topbar glass-shell"><div class="topbar-leading"><button class="mobile-menu" type="button" data-mobile-menu>☰</button><div><small>{{ navigation.category|title }}</small><strong>{{ title or 'Syntal' }}</strong></div></div><div class="topbar-actions"><a class="account-chip glass-control" href="{{ url_for('auth.account') }}"><span class="account-avatar">{{ (current_user.name or current_user.email or 'S')[:1] }}</span><span>{{ current_user.name or current_user.email }}</span></a></div></header>
+  <main class="workspace-content {% block content_class %}{% endblock %}">
+    {% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-stack">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<main class="auth-page">{% block auth_content %}{% endblock %}</main>
+{% endif %}
+<script src="{{ url_for('static', filename='v3.js') }}" defer></script>
+</body>
+</html>

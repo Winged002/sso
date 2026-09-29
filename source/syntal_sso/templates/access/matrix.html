@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% from '_components.html' import page_header,empty %}
+{% block content_class %}matrix-workspace{% endblock %}
+{% block content %}
+{% call page_header('Access','Access matrix','Control effective application access per member. Edit a cell to inherit access, explicitly enable or disable the app, assign an application role, and grant direct app permissions.') %}
+  {% if can_manage %}<span class="badge active">Editable matrix</span>{% endif %}
+{% endcall %}
+<section class="matrix-card">
+  <div class="matrix-scroll">
+    <table class="access-matrix editable-access-matrix">
+      <thead><tr><th class="sticky-col">Person</th>{% for app in applications %}{% set ent=entitlements.get(app.client_id) %}<th><a class="matrix-app-link" href="{{ url_for('applications.app_members',org_id=organization.syntal_org_id,client_id=app.client_id) }}">{{ app.name or app.client_id }}</a><small>{{ (ent or {}).get('status','inactive') }} · {{ app_counts.get(app.client_id,0) }} member{{ '' if app_counts.get(app.client_id,0)==1 else 's' }}</small></th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for m in memberships %}
+        {% set u=users.get(m.syntal_user_id,{}) or {} %}
+        {% set member_key=m.membership_id or (m._id|string) %}
+        <tr>
+          <td class="sticky-col"><strong>{{ u.get('name') or u.get('email') or m.syntal_user_id }}</strong><small>{{ m.role or m.role_key or m.role_id or 'member' }}{% if m.status != 'active' %} · {{ m.status }}{% endif %}</small></td>
+          {% for app in applications %}
+            {% set cell=matrix_cells.get((m._id|string,app.client_id)) %}
+            {% set dialog_id='matrix-' ~ member_key ~ '-' ~ app.client_id %}
+            <td class="matrix-cell {{ 'matrix-cell-editable' if can_manage and cell and not cell.owner else '' }}">
+              {% if cell %}
+                {% if can_manage and not cell.owner %}
+                  <button type="button" class="matrix-cell-button" data-dialog-open="{{ dialog_id }}" aria-label="Edit {{ app.name or app.client_id }} access for {{ u.get('name') or u.get('email') or m.syntal_user_id }}">
+                    <span class="matrix-state {{ cell.tone }}">{{ cell.label }}</span>
+                    <small>{{ cell.detail }}</small>
+                    <span class="matrix-edit-hint">Edit access</span>
+                  </button>
+                  <dialog id="{{ dialog_id }}" class="matrix-editor-dialog">
+                    <form method="post" action="{{ url_for('access.update_matrix_member_app',org_id=organization.syntal_org_id,membership_id=member_key,client_id=app.client_id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <header><div><span class="eyebrow">Member access</span><h2>{{ app.name or app.client_id }}</h2><p>{{ u.get('name') or u.get('email') or m.syntal_user_id }}</p></div><button type="button" data-dialog-close aria-label="Close">×</button></header>
+                      <div class="matrix-editor-current"><span class="matrix-state {{ cell.tone }}">{{ cell.label }}</span><small>{{ cell.detail }}</small></div>
+                      {% if not cell.entitled %}<div class="notice warning">This organization is not currently entitled to {{ app.name or app.client_id }}. Member settings are saved, but access remains unavailable until the organization enables the app.</div>{% endif %}
+                      <label>Application access
+                        <select name="access_effect">
+                          <option value="inherit" {{ 'selected' if cell.access_effect=='inherit' else '' }}>Inherited — follow organization role and app role</option>
+                          <option value="allow" {{ 'selected' if cell.access_effect=='allow' else '' }}>Enabled — explicitly allow this member</option>
+                          <option value="deny" {{ 'selected' if cell.access_effect=='deny' else '' }}>Disabled — explicitly block this member</option>
+                        </select>
+                      </label>
+                      <label>Application role
+                        <select name="app_role_id">
+                          <option value="">No application role</option>
+                          {% for role in app_roles_by_client.get(app.client_id,[]) %}<option value="{{ role.app_role_id }}" {{ 'selected' if cell.assignment and cell.assignment.get('app_role_id')==role.app_role_id else '' }}>{{ role.name or role.key or role.app_role_id }}</option>{% endfor %}
+                        </select>
+                      </label>
+                      <div class="matrix-permission-editor">
+                        <div class="field-title">Direct permissions</div>
+                        <p>These permissions apply only to this member in {{ app.name or app.client_id }} and are combined with the selected application role unless access is explicitly disabled.</p>
+                        <div class="check-list compact">
+                          {% for permission in permission_catalog.get(app.client_id,[]) %}
+                            <label class="check-row"><input type="checkbox" name="permissions" value="{{ permission }}" {{ 'checked' if permission in cell.direct_permissions else '' }}><span>{{ permission }}</span></label>
+                          {% else %}<small>No direct permissions are registered for this application.</small>{% endfor %}
+                        </div>
+                      </div>
+                      <div class="form-actions matrix-editor-actions"><button type="button" class="button" data-dialog-close>Cancel</button><button class="primary">Save member access</button></div>
+                    </form>
+                  </dialog>
+                {% else %}
+                  <span class="matrix-state {{ cell.tone }}">{{ cell.label }}</span><small>{{ cell.detail }}</small>{% if cell.owner %}<span class="matrix-protected">Protected</span>{% endif %}
+                {% endif %}
+              {% else %}<span class="matrix-state off">Unknown</span><small>Unable to resolve effective access</small>{% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+      {% else %}<tr><td>{{ empty('No members') }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

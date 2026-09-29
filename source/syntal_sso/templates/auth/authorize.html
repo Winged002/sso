@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block auth_content %}
+<section class="auth-card wide oauth-consent">
+  <div class="auth-brand"><span class="auth-star">✦</span><strong>Syntal</strong></div>
+
+  {% if no_access %}
+    <div class="oauth-app-head">
+      <span class="oauth-app-mark">{{ (client.get('name') or client.get('client_id') or 'A')[:1]|upper }}</span>
+      <div><small>Authorization request</small><h1>{{ client.get('name') or client.get('client_id') }}</h1></div>
+    </div>
+    <div class="oauth-notice danger">
+      <strong>No organization can authorize this application</strong>
+      <p>Your Syntal account does not currently have an eligible organization with access to {{ client.get('name') or client.get('client_id') }}.</p>
+      {% if requested_org_id %}<small>Requested organization: {{ (requested_org.get('display_name') or requested_org.get('name')) if requested_org else requested_org_id }}</small>{% endif %}
+    </div>
+  {% else %}
+    <div class="oauth-app-head">
+      <span class="oauth-app-mark">{{ (client.get('name') or client.get('client_id') or 'A')[:1]|upper }}</span>
+      <div><small>Continue to application</small><h1>{{ client.get('name') or client.get('client_id') }}</h1></div>
+    </div>
+
+    {% if requested_org_unavailable %}
+      <div class="oauth-notice warning">
+        <strong>The requested organization is not available for this app</strong>
+        <p>
+          {% if requested_org %}{{ requested_org.get('display_name') or requested_org.get('name') }}{% else %}The requested organization{% endif %}
+          cannot currently be used with {{ client.get('name') or client.get('client_id') }}. Choose an eligible organization below.
+        </p>
+      </div>
+    {% else %}
+      <p class="oauth-copy">Choose the organization you want to use with {{ client.get('name') or client.get('client_id') }}.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if scopes %}
+  <div class="oauth-scopes" aria-label="Requested access">
+    <small>Requested access</small>
+    <div>{% for scope in scopes %}<span>{{ scope|replace('_',' ') }}</span>{% endfor %}</div>
+  </div>
+  {% endif %}
+
+  <form method="post" class="oauth-form">
+    {% for key,val in values.items() %}
+      {% if key not in ['organization_id','org_id','cancel','csrf_token'] %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}
+    {% endfor %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {% if organizations %}
+      <div class="oauth-org-list">
+      {% for item in organizations %}
+        <label class="choice oauth-choice">
+          <input type="radio" name="organization_id" value="{{ item.organization.syntal_org_id }}" {% if organizations|length == 1 %}checked{% endif %} required>
+          <span class="org-avatar">{{ (item.organization.get('display_name') or item.organization.get('name') or 'O')[:1] }}</span>
+          <span class="oauth-choice-copy">
+            <strong>{{ item.organization.get('display_name') or item.organization.get('name') }}</strong>
+            <small>{{ (item.role.get('name') or item.role.get('key')) if item.role else item.membership.get('role') }}</small>
+          </span>
+          <span class="oauth-chevron">›</span>
+        </label>
+      {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if registration_options %}
+      <div class="oauth-org-section">
+        <div class="oauth-section-head">
+          <small>Other organizations</small>
+          <span>Enable {{ client.get('name') or client.get('client_id') }} without leaving sign-in.</span>
+        </div>
+        <div class="oauth-org-list">
+        {% for item in registration_options %}
+          <div class="choice oauth-choice oauth-registration-choice {{ 'can-register' if item.can_register else 'is-unavailable' }}">
+            <span class="org-avatar">{{ (item.organization.get('display_name') or item.organization.get('name') or 'O')[:1] }}</span>
+            <span class="oauth-choice-copy">
+              <strong>{{ item.organization.get('display_name') or item.organization.get('name') }}</strong>
+              <small>{{ (item.role.get('name') or item.role.get('key')) if item.role else item.membership.get('role') }} · {{ item.reason }}</small>
+            </span>
+            {% if item.can_register %}
+              <button class="button compact oauth-register-action" type="submit" name="register_organization" value="{{ item.organization.syntal_org_id }}" formnovalidate>Enable & continue</button>
+            {% else %}
+              <span class="badge muted">Unavailable</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="oauth-actions">
+      {% if organizations %}<button class="primary" type="submit">Continue</button>{% endif %}
+      <button class="button" type="submit" name="cancel" value="1">{{ 'Return to app' if no_access else 'Cancel' }}</button>
+    </div>
+  </form>
+
+  <footer>Signed in as {{ current_user.get('email') or current_user.get('name') }} · Syntal never shares your password with applications.</footer>
+</section>
+{% endblock %}

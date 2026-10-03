@@ -17,6 +17,8 @@
   <button class="button passkey-button" type="button" data-passkey-login data-next="{{ next_url or '' }}">Sign in with passkey</button>
   <div class="auth-inline-status" data-passkey-status aria-live="polite"></div>
   {% endif %}
-  {% if invitation_id %}<div class="auth-divider"><span>new to Syntal?</span></div><a class="button block" href="{{ url_for('auth.register',invitation=invitation_id) }}">Create account for this invitation</a>{% endif %}<footer>SSO v{{ app_version }}</footer>
+  <div class="auth-divider"><span>new to Syntal?</span></div>
+  {% if invitation_id %}<a class="button block" href="{{ url_for('auth.register',invitation=invitation_id) }}">Create account for this invitation</a>{% else %}<a class="button block" href="{{ url_for('auth.register') }}">Create account & organization</a>{% endif %}
+  <footer>SSO v{{ app_version }}</footer>
 </section>
-{% endblock %}
+<p><a href="/verify-email">Confirm email</a> · <a href="/forgot-password">Forgot password?</a></p>{% endblock %}

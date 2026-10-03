@@ -2,15 +2,21 @@ from flask import Blueprint, abort, g, redirect, render_template, request, url_f
 from bson import ObjectId
 from .db import db
 from .security import login_required
-from .acl import audit, bump_policy_version, effective_permissions_for_membership, entitlement_is_active, has_permission, require_permission, role_for_membership
+from .acl import (
+    audit, bump_policy_version, effective_permissions_for_membership, entitlement_is_active,
+    has_permission, require_permission, role_for_membership, application_owned_by_org,
+    application_requires_entitlement_for_org, application_visible_to_org,
+)
 from .util import public_id, utcnow
+from .policy import access_decision
+from .lifecycle import validate_role_grants, serialize_org
 
 bp = Blueprint("access", __name__)
 
 
 def _require_org(org_id, permission="syntal.roles.read"):
     uid=g.user.get("syntal_user_id") or str(g.user.get("_id"))
-    org=db().organizations.find_one({"syntal_org_id":org_id,"status":{"$ne":"deleted"}})
+    org=db().organizations.find_one({"syntal_org_id":org_id,"status":"active"})
     membership=db().memberships.find_one({"syntal_org_id":org_id,"syntal_user_id":uid,"status":"active"})
     if not org or not membership: abort(404)
     g.organization,g.membership=org,membership
@@ -20,11 +26,13 @@ def _require_org(org_id, permission="syntal.roles.read"):
 
 def _available_permissions(org_id):
     perms=set()
-    for role in db().organization_roles.find({"syntal_org_id":org_id,"status":{"$ne":"deleted"}}):
+    for role in db().organization_roles.find({"syntal_org_id":org_id,"status":"active"}):
         perms.update(role.get("permissions") or [])
     for row in db().organization_application_permissions.find({"syntal_org_id":org_id,"status":"active"}):
         if row.get("permission"): perms.add(row["permission"])
-    for app in db().applications.find({"status":"active"},{"client_id":1}):
+    for app in db().applications.find({"status":"active"}):
+        if not application_visible_to_org(app,org_id):
+            continue
         cid=app.get("client_id")
         if cid: perms.update({f"{cid}.access",f"{cid}.admin"})
     perms.update({"syntal.members.read","syntal.members.manage","syntal.members.invite","syntal.roles.read","syntal.roles.manage","syntal.org_apps.read","syntal.org_apps.register","syntal.org_apps.manage","syntal.billing.read","syntal.billing.manage","syntal.audit.read","syntal.organization.manage"})
@@ -32,21 +40,26 @@ def _available_permissions(org_id):
 
 @bp.route("/organizations/<org_id>/access/roles",methods=["GET","POST"])
 @login_required
+@serialize_org
 def roles(org_id):
     org,_=_require_org(org_id)
     if request.method=="POST":
         require_permission("syntal.roles.manage")
         name=(request.form.get("name") or "").strip(); key=(request.form.get("key") or name.lower().replace(" ","_")).strip()
         if not name: abort(400)
+        if key in {'owner','admin','member'}:abort(409,'Built-in role names are reserved.')
+        if db().organization_roles.find_one({'syntal_org_id':org_id,'key':key}):abort(409,'Role key already exists.')
+        validate_role_grants(org_id,g.membership,key,request.form.getlist('permissions'))
         role={"role_id":public_id("role"),"syntal_org_id":org_id,"key":key,"name":name,"description":(request.form.get("description") or "").strip(),"permissions":request.form.getlist("permissions"),"status":"active","created_at":utcnow(),"created_by":g.user.get("syntal_user_id")}
         db().organization_roles.insert_one(role); bump_policy_version(org_id); audit("authorization.role_created",org_id=org_id,detail={"role_id":role["role_id"],"key":key})
         return redirect(url_for("access.roles",org_id=org_id))
-    rows=list(db().organization_roles.find({"syntal_org_id":org_id,"status":{"$ne":"deleted"}}).sort([("rank",-1),("name",1)]))
+    rows=list(db().organization_roles.find({"syntal_org_id":org_id,"status":"active"}).sort([("rank",-1),("name",1)]))
     counts={r.get("role_id"):db().memberships.count_documents({"syntal_org_id":org_id,"role_id":r.get("role_id"),"status":{"$in":["active","suspended"]}}) for r in rows}
     return render_template("access/roles.html",title="Roles",organization=org,roles=rows,counts=counts,permissions=_available_permissions(org_id),can_manage=has_permission("syntal.roles.manage"))
 
 @bp.route("/organizations/<org_id>/access/roles/<role_id>",methods=["GET","POST"])
 @login_required
+@serialize_org
 def role_detail(org_id,role_id):
     org,_=_require_org(org_id); role=db().organization_roles.find_one({"syntal_org_id":org_id,"role_id":role_id,"status":{"$ne":"deleted"}})
     if not role: abort(404)
@@ -54,6 +67,7 @@ def role_detail(org_id,role_id):
         require_permission("syntal.roles.manage")
         if role.get("key")=="owner": abort(409,"The owner role is protected.")
         perms=request.form.getlist("permissions")
+        validate_role_grants(org_id,g.membership,role.get("key"),perms)
         db().organization_roles.update_one({"_id":role["_id"]},{"$set":{"name":(request.form.get("name") or role.get("name")).strip(),"description":(request.form.get("description") or "").strip(),"permissions":perms,"updated_at":utcnow()}}); bump_policy_version(org_id); audit("authorization.role_updated",org_id=org_id,detail={"role_id":role_id})
         return redirect(url_for("access.role_detail",org_id=org_id,role_id=role_id))
     members=list(db().memberships.find({"syntal_org_id":org_id,"role_id":role_id,"status":{"$in":["active","suspended"]}})); users={u.get("syntal_user_id"):u for u in db().users.find({"syntal_user_id":{"$in":[m.get("syntal_user_id") for m in members]}})} if members else {}
@@ -96,7 +110,7 @@ def _matrix_cell(org_id, membership, app, entitlement, assignment, app_roles):
     effective = set(effective_permissions_for_membership(org_id, membership))
     role = role_for_membership(org_id, membership) or {}
     role_key = role.get("key") or membership.get("role") or membership.get("role_key") or "member"
-    owner = role_key == "owner" or "*" in effective
+    owner = role_key == "owner"
     override = ((assignment or {}).get("access_effect") or "inherit").strip().lower()
     if override not in {"inherit","allow","deny"}:
         override="inherit"
@@ -105,23 +119,24 @@ def _matrix_cell(org_id, membership, app, entitlement, assignment, app_roles):
     manual_allowed = override == "allow"
     app_admin = f"{client_id}.admin" in effective
     app_access = f"{client_id}.access" in effective
-    org_owned = app.get("owner_type") == "organization" and app.get("owner_org_id") == org_id
+    org_owned = application_owned_by_org(app,org_id)
     permission_granted = owner or (not manual_denied and (app_admin or app_access or org_owned or manual_allowed))
 
-    entitlement_required = (
-        client_id != "syntal"
-        and app.get("requires_entitlement", True)
-        and not org_owned
-    )
+    entitlement_required = application_requires_entitlement_for_org(app,org_id)
     entitled = (not entitlement_required) or entitlement_is_active(entitlement)
     member_active = membership.get("status") == "active"
     app_active = app.get("status", "active") == "active"
-    allowed = member_active and app_active and entitled and permission_granted
+    user=db().users.find_one({'syntal_user_id':membership.get('syntal_user_id')})
+    organization=db().organizations.find_one({'syntal_org_id':org_id})
+    decision=access_decision(user,organization,membership,app)
+    allowed=decision['allowed']
 
     assigned_role = app_roles.get((client_id, (assignment or {}).get("app_role_id"))) if assignment else None
     assigned_name = (assigned_role or {}).get("name") or (assigned_role or {}).get("key") or (assignment or {}).get("app_role_id")
 
-    if not member_active:
+    if not allowed and any(r in decision['reasons'] for r in ('account_not_active','email_not_verified','organization_not_active','application_not_visible')):
+        label, tone, detail = "Blocked", "blocked", ", ".join(decision['reasons']).replace('_',' ')
+    elif not member_active:
         label, tone, detail = "Suspended", "blocked", "Organization membership is suspended"
     elif not app_active:
         label, tone, detail = "App suspended", "blocked", "Application is not active"
@@ -129,6 +144,8 @@ def _matrix_cell(org_id, membership, app, entitlement, assignment, app_roles):
         label, tone, detail = "Not entitled", "blocked", "Organization entitlement is inactive"
     elif manual_denied:
         label, tone, detail = "Disabled", "blocked", "Disabled specifically for this member"
+    elif not allowed:
+        label, tone, detail = "No access", "off", ", ".join(decision['reasons']).replace('_',' ')
     elif owner:
         label, tone, detail = "Owner", "on", "Inherited from organization owner"
     elif app_admin:
@@ -146,6 +163,7 @@ def _matrix_cell(org_id, membership, app, entitlement, assignment, app_roles):
 
     return {
         "allowed": allowed,
+        "reasons":decision["reasons"],
         "label": label,
         "tone": tone,
         "detail": detail,
@@ -168,7 +186,7 @@ def matrix(org_id):
     org,actor_membership=_require_org(org_id)
     memberships=list(db().memberships.find({"syntal_org_id":org_id,"status":{"$in":["active","suspended"]}}).sort("created_at",1))
     users={u.get("syntal_user_id"):u for u in db().users.find({"syntal_user_id":{"$in":[m.get("syntal_user_id") for m in memberships]}})} if memberships else {}
-    apps=list(db().applications.find({"status":{"$ne":"deleted"},"client_id":{"$ne":"syntal"}}).sort("name",1))
+    apps=[app for app in db().applications.find({"status":{"$ne":"deleted"},"client_id":{"$ne":"syntal"}}).sort("name",1) if application_visible_to_org(app,org_id)]
     entitlements={e.get("application"):e for e in db().organization_entitlements.find({"syntal_org_id":org_id})}
 
     assignment_rows=list(db().organization_application_memberships.find({"syntal_org_id":org_id,"status":"active"}))
@@ -216,6 +234,7 @@ def matrix(org_id):
 
 @bp.post("/organizations/<org_id>/access/matrix/members/<membership_id>/apps/<client_id>")
 @login_required
+@serialize_org
 def update_matrix_member_app(org_id,membership_id,client_id):
     _org,actor_membership=_require_org(org_id)
     if not has_permission("syntal.org_apps.manage",actor_membership,org_id):
@@ -229,7 +248,7 @@ def update_matrix_member_app(org_id,membership_id,client_id):
         abort(409,"Owner application access is protected by organization ownership.")
 
     app=db().applications.find_one({"client_id":client_id,"status":{"$ne":"deleted"}})
-    if not app or client_id == "syntal":
+    if not app or client_id == "syntal" or not application_visible_to_org(app,org_id):
         abort(404)
 
     effect=(request.form.get("access_effect") or "inherit").strip().lower()
@@ -300,7 +319,7 @@ def update_matrix_member_app(org_id,membership_id,client_id):
 @bp.get("/organizations/<org_id>/access/decisions")
 @login_required
 def decisions(org_id):
-    org,_=_require_org(org_id)
+    org,_=_require_org(org_id,"syntal.audit.read")
     query={"syntal_org_id":org_id}
     if request.args.get("application"): query["application"]=request.args["application"]
     if request.args.get("allowed") in {"true","false"}: query["allowed"]=request.args["allowed"]=="true"
@@ -310,8 +329,8 @@ def decisions(org_id):
 @bp.get("/organizations/<org_id>/access/audit")
 @login_required
 def audit_log(org_id):
-    org,_=_require_org(org_id)
+    org,_=_require_org(org_id,"syntal.audit.read")
     query={"syntal_org_id":org_id}
-    if request.args.get("event"): query["event"]={"$regex":request.args["event"],"$options":"i"}
+    if request.args.get("event"): query["event"]={"$regex":__import__("re").escape(request.args["event"][:100]),"$options":"i"}
     rows=list(db().audit_events.find(query).sort("created_at",-1).limit(300))
     return render_template("access/audit.html",title="Audit log",organization=org,audit_events=rows)

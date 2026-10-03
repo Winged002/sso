@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% from '_components.html' import page_header %}
+{% block content %}
+{{ page_header('Organization','Create organization','Create another Syntal workspace. You will be its owner and can invite members after creation.') }}
+{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+<section class="form-card">
+  <form method="post" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="span-2">Organization name<input name="organization_name" maxlength="120" autocomplete="organization" placeholder="Acme, Inc." required autofocus></label>
+    <div class="form-actions span-2">
+      <a class="button" href="{{ url_for('organizations.index') }}">Cancel</a>
+      <button class="primary" type="submit">Create organization</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

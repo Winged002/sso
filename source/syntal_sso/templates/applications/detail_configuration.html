@@ -1,1 +1,26 @@
-{% extends 'base.html' %}{% from '_components.html' import page_header,app_tabs %}{% block content %}{{ page_header('Application',application.name or application.client_id,'General application configuration is separate from permissions, member assignments and OAuth.') }}{{ app_tabs(organization.syntal_org_id,application,'configuration') }}<section class="card form-card"><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Name<input name="name" value="{{ application.name or '' }}" {{ 'disabled' if not can_manage else '' }}></label><label>Description<textarea name="description" rows="4" {{ 'disabled' if not can_manage else '' }}>{{ application.description or '' }}</textarea></label><div class="form-grid two"><label>Status<select name="status" {{ 'disabled' if not can_manage else '' }}><option value="active" {{ 'selected' if application.status=='active' else '' }}>Active</option><option value="suspended" {{ 'selected' if application.status=='suspended' else '' }}>Suspended</option></select></label><label class="toggle"><input type="checkbox" name="require_aal2" {{ 'checked' if application.require_aal2 else '' }} {{ 'disabled' if not can_manage else '' }}><span>Require AAL2</span></label></div>{% if can_manage %}<div class="form-actions"><button class="primary">Save configuration</button></div>{% endif %}</form></section>{% endblock %}
+{% extends 'base.html' %}{% from '_components.html' import page_header,app_tabs %}{% block content %}
+{{ page_header('Application',application.name or application.client_id,'Global client settings are controlled by the application owner. Organization member access is managed separately.') }}
+{{ app_tabs(organization.syntal_org_id,application,'configuration') }}
+<section class="card form-card">
+  {% if not owner_controls %}<div class="notice">This application is distributed by another organization. You can enable/disable it and manage your own members, but only the application owner can change its OAuth client or distribution settings.</div>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Name<input name="name" value="{{ application.name or '' }}" {{ 'disabled' if not can_manage else '' }}></label>
+    <label>Description<textarea name="description" rows="4" {{ 'disabled' if not can_manage else '' }}>{{ application.description or '' }}</textarea></label>
+    <div class="form-grid two">
+      <label>Status<select name="status" {{ 'disabled' if not can_manage else '' }}><option value="active" {{ 'selected' if application.status=='active' else '' }}>Active</option><option value="suspended" {{ 'selected' if application.status=='suspended' else '' }}>Suspended</option></select></label>
+      <label class="toggle"><input type="checkbox" name="require_aal2" {{ 'checked' if application.require_aal2 else '' }} {{ 'disabled' if not can_manage else '' }}><span>Require AAL2</span></label>
+    </div>
+    {% if owner_controls %}
+      <label>Availability
+        <select name="distribution_scope" {{ 'disabled' if not can_manage else '' }}>
+          <option value="private" {{ 'selected' if (application.distribution_scope or 'private')=='private' else '' }}>Private — only this organization</option>
+          <option value="organizations" {{ 'selected' if application.distribution_scope=='organizations' else '' }}>Available to other Syntal organizations</option>
+        </select>
+      </label>
+      <small class="muted">When distributed, another organization’s owner or admin can enable this application during sign-in or from its Applications catalog. Existing private applications remain private until you change this setting.</small>
+    {% endif %}
+    {% if can_manage %}<label class="toggle"><input type="checkbox" name="api_access_enabled" {{ 'checked' if application.api_access_enabled else '' }} {{ 'disabled' if not can_manage else '' }}>Allow organization directory API access</label><div class="form-actions"><button class="primary">Save configuration</button></div>{% endif %}
+  </form>
+</section>
+{% endblock %}

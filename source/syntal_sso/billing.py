@@ -9,7 +9,7 @@ bp = Blueprint("billing", __name__)
 
 def _require_org(org_id, manage=False):
     uid=g.user.get("syntal_user_id") or str(g.user.get("_id"))
-    org=db().organizations.find_one({"syntal_org_id":org_id,"status":{"$ne":"deleted"}})
+    org=db().organizations.find_one({"syntal_org_id":org_id,"status":"active"})
     membership=db().memberships.find_one({"syntal_org_id":org_id,"syntal_user_id":uid,"status":"active"})
     if not org or not membership: abort(404)
     g.organization,g.membership=org,membership
@@ -71,10 +71,13 @@ def profile(org_id):
 
 @bp.post("/stripe/webhook")
 def stripe_webhook():
-    # v3 keeps the endpoint stable. Existing billing worker/reconciliation remains authoritative;
-    # the webhook body is recorded only when an event id is available, without schema migration.
-    payload=request.get_json(silent=True) or {}
-    event_id=payload.get("id")
-    if event_id:
-        db().stripe_events.update_one({"event_id":event_id},{"$setOnInsert":{"event_id":event_id,"type":payload.get("type"),"payload":payload,"created_at":utcnow()}},upsert=True)
-    return {"received":True}
+    import stripe
+    from flask import current_app
+    secret=current_app.config.get('STRIPE_WEBHOOK_SECRET')
+    if not secret:abort(503,'Billing webhook not configured')
+    try:payload=stripe.Webhook.construct_event(request.get_data(),request.headers.get('Stripe-Signature',''),secret)
+    except Exception:abort(400,'Invalid webhook signature')
+    event_id=payload.get('id')
+    if not isinstance(event_id,str) or not event_id:abort(400)
+    db().stripe_events.update_one({'event_id':event_id},{'$setOnInsert':{'event_id':event_id,'type':payload.get('type'),'payload':dict(payload),'created_at':utcnow(),'signature_verified':True}},upsert=True)
+    return {'received':True}

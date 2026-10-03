@@ -1,1 +1,70 @@
-{% extends 'base.html' %}{% from '_components.html' import page_header,empty %}{% block content %}{% call page_header('Applications','Applications','Manage organization applications without mixing registration and security policy into the same page.') %}{% if can_manage %}<button class="primary" type="button" data-dialog-open="new-app">New application</button>{% endif %}{% endcall %}<section class="card-grid">{% for app in applications %}{% set ent=entitlements.get(app.client_id) %}<a class="entity-card" href="{{ url_for('applications.app_overview',org_id=organization.syntal_org_id,client_id=app.client_id) }}"><span class="entity-avatar">{{ (app.name or app.client_id)[:1] }}</span><div><strong>{{ app.name or app.client_id }}</strong><p>{{ app.description or app.client_id }}</p><small>{{ app.client_id }} · {{ ent.status if ent else ('organization-owned' if app.owner_org_id==organization.syntal_org_id else 'not entitled') }}</small></div></a>{% else %}{{ empty('No applications') }}{% endfor %}</section>{% if can_manage %}<dialog id="new-app"><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><header><h2>Create application</h2><button type="button" data-dialog-close>×</button></header><label>Name<input name="name" required></label><label>Client ID<input name="client_id" pattern="[a-z0-9_-]+" required></label><label>Description<textarea name="description" rows="3"></textarea></label><div class="form-actions"><button class="primary">Create</button></div></form></dialog>{% endif %}{% endblock %}
+{% extends 'base.html' %}
+{% from '_components.html' import page_header,empty %}
+{% block content %}
+{% call page_header('Applications','Applications','Enable the Syntal products this organization can use. Application access for individual people is managed only after the product is enabled.') %}
+  {% if can_manage %}<button class="button" type="button" data-dialog-open="new-app">Register custom app</button>{% endif %}
+{% endcall %}
+
+<section class="catalog-intro">
+  <div><strong>Organization application catalog</strong><p>Enable a product once for the organization. The administrator enabling it receives access automatically; use Manage access to add or restrict other members.</p></div>
+</section>
+
+<section class="app-catalog" aria-label="Organization applications">
+{% for app in applications %}
+  {% set ent=entitlements.get(app.client_id) %}
+  {% set state=app_states.get(app.client_id,{}) %}
+  <article class="app-catalog-card {{ 'is-enabled' if state.enabled else 'is-disabled' }}">
+    <a class="app-catalog-main" href="{{ url_for('applications.app_overview',org_id=organization.syntal_org_id,client_id=app.client_id) }}">
+      <span class="entity-avatar">{{ (app.name or app.client_id)[:1] }}</span>
+      <span class="app-catalog-copy">
+        <span class="app-catalog-heading"><strong>{{ app.name or app.client_id }}</strong>
+          {% if app.status != 'active' %}<span class="badge suspended">Unavailable</span>
+          {% elif state.owned %}<span class="badge active">Owned</span>
+          {% elif state.enabled %}<span class="badge active">Enabled</span>{% if state.distributable %}<span class="badge muted">Distributed</span>{% endif %}
+          {% else %}<span class="badge pending">Not enabled</span>{% endif %}
+        </span>
+        <span class="app-catalog-description">{{ app.description or 'Syntal application' }}</span>
+        <small><code>{{ app.client_id }}</code>{% if ent and ent.status %} · entitlement {{ ent.status }}{% elif state.owned %} · organization-owned{% elif not state.entitlement_required %} · included{% endif %}</small>
+      </span>
+    </a>
+    <div class="app-catalog-actions">
+      {% if state.enabled %}
+        <a class="button compact" href="{{ url_for('applications.app_members',org_id=organization.syntal_org_id,client_id=app.client_id) }}">Manage access</a>
+        {% if state.entitlement_required and can_register %}
+          <form method="post" action="{{ url_for('applications.disable_application',org_id=organization.syntal_org_id,client_id=app.client_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="button compact ghost" type="submit">Disable</button>
+          </form>
+        {% endif %}
+      {% elif state.registration_supported and can_register %}
+        <form method="post" action="{{ url_for('applications.enable_application',org_id=organization.syntal_org_id,client_id=app.client_id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="primary compact" type="submit">Enable</button>
+        </form>
+        <a class="button compact ghost" href="{{ url_for('applications.app_overview',org_id=organization.syntal_org_id,client_id=app.client_id) }}">Details</a>
+      {% elif state.registration_supported %}
+        <span class="catalog-action-note">Organization admin required</span>
+      {% else %}
+        <span class="catalog-action-note">Not available for self-service enablement</span>
+      {% endif %}
+    </div>
+  </article>
+{% else %}
+  {{ empty('No applications','No applications are currently registered in Syntal SSO.') }}
+{% endfor %}
+</section>
+
+{% if can_manage %}
+<dialog id="new-app">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <header><div><span class="eyebrow">Developer application</span><h2>Register custom OAuth application</h2></div><button type="button" data-dialog-close>×</button></header>
+    <div class="notice">This creates a new organization-owned OIDC client. It is different from enabling an existing Syntal product above.</div>
+    <label>Name<input name="name" required></label>
+    <label>Client ID<input name="client_id" pattern="[a-z0-9_-]+" required></label>
+    <label>Description<textarea name="description" rows="3"></textarea></label>
+    <div class="form-actions"><button class="primary">Register application</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

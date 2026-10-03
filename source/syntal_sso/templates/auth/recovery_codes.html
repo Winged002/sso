@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="card narrow"><h1>Save your recovery codes</h1><p>Each code works once. These replace all previous recovery codes and are shown only now. Keep them somewhere private.</p><ul>{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ul><a href="/account">Saved — return to account</a></section>{% endblock %}

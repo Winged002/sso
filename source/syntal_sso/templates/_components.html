@@ -1,10 +1,12 @@
 {% macro page_header(kicker,title,description='',actions='') -%}
-<header class="page-header glass-hero"><div class="page-copy"><span class="eyebrow"><i></i>{{ kicker }}</span><h1>{{ title }}</h1>{% if description %}<p>{{ description }}</p>{% endif %}</div>{% if caller %}<div class="page-actions">{{ caller() }}</div>{% endif %}</header>
+<header class="page-header workspace-hero"><div class="page-copy"><span class="eyebrow"><i></i>{{ kicker }}</span><h1>{{ title }}</h1>{% if description %}<p>{{ description }}</p>{% endif %}</div>{% if caller %}<div class="page-actions">{{ caller() }}</div>{% endif %}</header>
 {%- endmacro %}
-{% macro stat(label,value,caption='') -%}<article class="stat glass-card"><span>{{ label }}</span><strong>{{ value }}</strong>{% if caption %}<small>{{ caption }}</small>{% endif %}</article>{%- endmacro %}
+{% macro stat(label,value,caption='') -%}<article class="stat workspace-stat"><div class="stat-top"><span>{{ label }}</span><i aria-hidden="true"></i></div><strong>{{ value }}</strong>{% if caption %}<small>{{ caption }}</small>{% else %}<small>Current workspace</small>{% endif %}</article>{%- endmacro %}
 {% macro empty(title,copy='') -%}<div class="empty-state"><span class="empty-star">✦</span><strong>{{ title }}</strong>{% if copy %}<p>{{ copy }}</p>{% endif %}</div>{%- endmacro %}
 {% macro app_tabs(org_id,app,active) -%}
-<nav class="detail-tabs glass-tabs">
-{% set items=[('overview','Overview','applications.app_overview'),('configuration','Configuration','applications.app_configuration'),('permissions','Permissions','applications.app_permissions'),('roles','Roles','applications.app_roles'),('members','Members','applications.app_members'),('oauth','OAuth','applications.app_oauth'),('secrets','Secrets','applications.app_secrets')] %}
-{% for key,label,ep in items %}<a class="{{ 'active' if active==key else '' }}" href="{{ url_for(ep,org_id=org_id,client_id=app.client_id) }}">{{ label }}</a>{% endfor %}
+<nav class="detail-tabs workspace-tabs" aria-label="Application sections">
+{% set owner_controls=(app.owner_type == 'organization' and app.owner_org_id == org_id) %}
+{% set items=[('overview','Overview','applications.app_overview'),('permissions','Permissions','applications.app_permissions'),('roles','Roles','applications.app_roles'),('members','Members','applications.app_members')] %}
+{% if owner_controls %}{% set items=items+[('configuration','Configuration','applications.app_configuration'),('oauth','OAuth','applications.app_oauth'),('secrets','Secrets','applications.app_secrets')] %}{% endif %}
+{% for key,label,ep in items %}<a class="{{ 'active' if active==key else '' }}" href="{{ url_for(ep,org_id=org_id,client_id=app.client_id) }}"><span>{{ label }}</span></a>{% endfor %}
 </nav>{%- endmacro %}

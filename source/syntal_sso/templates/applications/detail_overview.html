@@ -1,1 +1,60 @@
-{% extends 'base.html' %}{% from '_components.html' import page_header,stat,app_tabs %}{% block content %}{{ page_header('Application',application.name or application.client_id,application.description or 'Application administration') }}{{ app_tabs(organization.syntal_org_id,application,'overview') }}<section class="stats-grid">{{ stat('Permissions',perm_count) }}{{ stat('Application roles',role_count) }}{{ stat('Assigned members',member_count) }}{{ stat('Entitlement',entitlement.status if entitlement else ('Owned' if application.owner_org_id==organization.syntal_org_id else 'Inactive')) }}</section><div class="content-grid two"><section class="card"><h2>Application identity</h2><dl class="summary-list"><div><dt>Client ID</dt><dd><code>{{ application.client_id }}</code></dd></div><div><dt>Status</dt><dd>{{ application.status }}</dd></div><div><dt>Owner</dt><dd>{{ application.owner_type or 'syntal' }}</dd></div><div><dt>OIDC</dt><dd>{{ 'Enabled' if application.oidc_enabled else 'Disabled' }}</dd></div></dl></section><section class="card"><h2>Next actions</h2><a class="list-link" href="{{ url_for('applications.app_configuration',org_id=organization.syntal_org_id,client_id=application.client_id) }}">Configuration<span>›</span></a><a class="list-link" href="{{ url_for('applications.app_members',org_id=organization.syntal_org_id,client_id=application.client_id) }}">Member assignments<span>›</span></a><a class="list-link" href="{{ url_for('applications.app_oauth',org_id=organization.syntal_org_id,client_id=application.client_id) }}">OAuth settings<span>›</span></a></section></div>{% endblock %}
+{% extends 'base.html' %}
+{% from '_components.html' import page_header,stat,app_tabs %}
+{% block content %}
+{% call page_header('Application',application.name or application.client_id,application.description or 'Application administration') %}
+  {% if app_state.enabled %}
+    {% if app_state.entitlement_required and can_register %}
+      <form method="post" action="{{ url_for('applications.disable_application',org_id=organization.syntal_org_id,client_id=application.client_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="return_to" value="overview">
+        <button class="button ghost" type="submit">Disable application</button>
+      </form>
+    {% endif %}
+  {% elif app_state.registration_supported and can_register %}
+    <form method="post" action="{{ url_for('applications.enable_application',org_id=organization.syntal_org_id,client_id=application.client_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="return_to" value="overview">
+      <button class="primary" type="submit">Enable application</button>
+    </form>
+  {% endif %}
+{% endcall %}
+
+{{ app_tabs(organization.syntal_org_id,application,'overview') }}
+
+<section class="application-availability {{ 'enabled' if app_state.enabled else 'disabled' }}">
+  <div class="availability-mark">{{ '✓' if app_state.enabled else '○' }}</div>
+  <div>
+    {% if not app_state.registry_active %}
+      <strong>Application unavailable</strong><p>The application is suspended in the SSO registry and cannot be used until its registry status is active.</p>
+    {% elif app_state.owned %}
+      <strong>Available — organization owned</strong><p>This application belongs to this organization and does not require a separate entitlement.</p>
+    {% elif not app_state.entitlement_required %}
+      <strong>Available — included</strong><p>This application does not require an organization entitlement.</p>
+    {% elif app_state.enabled %}
+      <strong>Enabled for this organization</strong><p>Members with application access can use it now. Disabling the application preserves member assignments so they can be restored on re-enable.</p>
+    {% elif app_state.registration_supported and can_register %}
+      <strong>Not enabled</strong><p>Enable this application to create the organization entitlement. Your own member access is granted automatically; other members remain unchanged until assigned.</p>
+    {% elif app_state.registration_supported %}
+      <strong>Not enabled</strong><p>An organization owner, administrator, or role with application-registration permission must enable this application.</p>
+    {% else %}
+      <strong>Unavailable for self-service enablement</strong><p>The application is disabled or its registration policy does not allow this organization to enable it directly.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="stats-grid">
+  {{ stat('Permissions',perm_count) }}
+  {{ stat('Application roles',role_count) }}
+  {{ stat('Assigned members',member_count) }}
+  {{ stat('Organization status','Enabled' if app_state.enabled else 'Disabled') }}
+</section>
+
+<div class="content-grid two">
+  <section class="card"><h2>Application identity</h2><dl class="summary-list"><div><dt>Client ID</dt><dd><code>{{ application.client_id }}</code></dd></div><div><dt>Registry status</dt><dd>{{ application.status }}</dd></div><div><dt>Owner</dt><dd>{{ application.owner_type or 'syntal' }}</dd></div><div><dt>OIDC</dt><dd>{{ 'Enabled' if application.oidc_enabled else 'Disabled' }}</dd></div><div><dt>Entitlement</dt><dd>{{ entitlement.status if entitlement else ('Not required' if not app_state.entitlement_required else 'Inactive') }}</dd></div></dl></section>
+  <section class="card"><h2>Next actions</h2>
+    {% if app_state.enabled %}<a class="list-link" href="{{ url_for('applications.app_members',org_id=organization.syntal_org_id,client_id=application.client_id) }}">Manage member access<span>›</span></a>{% endif %}
+    {% if app_state.owned %}
+      <a class="list-link" href="{{ url_for('applications.app_configuration',org_id=organization.syntal_org_id,client_id=application.client_id) }}">Configuration & distribution<span>›</span></a>
+      <a class="list-link" href="{{ url_for('applications.app_oauth',org_id=organization.syntal_org_id,client_id=application.client_id) }}">OAuth settings<span>›</span></a>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

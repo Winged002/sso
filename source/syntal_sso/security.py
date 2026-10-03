@@ -9,13 +9,13 @@ _ph = PasswordHasher()
 
 
 def hash_password(password):
-    if not password or len(password) < 10:
-        raise ValueError("Password must be at least 10 characters.")
+    if not password or len(password) < 10 or len(password)>1024:
+        raise ValueError("Password must contain 10 to 1024 characters.")
     return _ph.hash(password)
 
 
 def verify_password(stored, provided):
-    if not stored or not provided:
+    if not stored or not provided or len(provided)>1024:
         return False
     try:
         if stored.startswith("$argon2"):
@@ -40,7 +40,9 @@ def csrf_token():
 def enforce_csrf():
     if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return
-    if request.endpoint in {"oidc.token", "oidc.revoke", "oidc.introspect", "billing.stripe_webhook"}:
+    if request.endpoint == "api.access_check" and request.headers.get("Authorization", "").startswith("Bearer "):
+        return
+    if request.endpoint in {"oidc.token", "oidc.revoke", "oidc.introspect", "billing.stripe_webhook", "service_accounts.token", "federation.saml_acs"} or (request.endpoint and request.endpoint.startswith("scim.")) and request.path.startswith("/scim/"):
         return
     supplied = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
     expected = session.get("csrf_token")

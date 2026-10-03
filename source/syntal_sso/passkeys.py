@@ -80,7 +80,7 @@ def _user_queries(user):
         {"syntal_user_id": uid},
         {"user_id": uid},
         {"user_id": str(oid)} if oid is not None else None,
-        {"email": user.get("email")} if user.get("email") else None,
+        
     ]
     if isinstance(oid, ObjectId):
         values.insert(2, {"user_id": oid})
@@ -99,7 +99,7 @@ def credential_documents(user):
         collection = database[name]
         docs = []
         for query in _user_queries(user):
-            docs.extend(list(collection.find(query)))
+            docs.extend(list(collection.find({**query,"status":{"$nin":["revoked","deleted"]}})))
         for doc in docs:
             cid = _credential_id_bytes(doc)
             pub = _public_key_bytes(doc)
@@ -151,7 +151,7 @@ def authentication_options(user):
     options = generate_authentication_options(
         rp_id=_rp_id(),
         allow_credentials=[PublicKeyCredentialDescriptor(id=item["credential_id"]) for item in credentials],
-        user_verification=UserVerificationRequirement.PREFERRED,
+        user_verification=UserVerificationRequirement.REQUIRED,
     )
     return json.loads(options_to_json(options)), bytes(options.challenge)
 
@@ -176,7 +176,7 @@ def verify_authentication(user, credential, expected_challenge: bytes):
         expected_origin=_origin(),
         credential_public_key=match["public_key"],
         credential_current_sign_count=int(doc.get("sign_count") or doc.get("current_sign_count") or 0),
-        require_user_verification=False,
+        require_user_verification=True,
     )
     new_count = int(getattr(verification, "new_sign_count", doc.get("sign_count") or 0) or 0)
     db()[match["collection"]].update_one(
@@ -206,7 +206,7 @@ def registration_options(user):
         exclude_credentials=[PublicKeyCredentialDescriptor(id=item["credential_id"]) for item in existing],
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.PREFERRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )
     return json.loads(options_to_json(options)), bytes(options.challenge)
@@ -220,7 +220,7 @@ def verify_registration(user, credential, expected_challenge: bytes, *, name="Pa
         expected_challenge=expected_challenge,
         expected_rp_id=_rp_id(),
         expected_origin=_origin(),
-        require_user_verification=False,
+        require_user_verification=True,
     )
     cid = bytes(verification.credential_id)
     pub = bytes(verification.credential_public_key)

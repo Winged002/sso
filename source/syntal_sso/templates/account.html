@@ -63,12 +63,12 @@
       <div class="auth-inline-status" data-passkey-status aria-live="polite"></div>
       <div class="passkey-list">
       {% for item in passkeys %}
-        <div class="passkey-row"><div><strong>{{ item.name }}</strong><small>{{ item.collection }}{% if item.last_used %} · Last used {{ item.last_used }}{% endif %}</small></div><form method="post" action="{{ url_for('auth.passkey_delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="collection" value="{{ item.collection }}"><input type="hidden" name="record_id" value="{{ item.record_id }}"><button class="tiny subtle" type="submit">Remove</button></form></div>
+        <div class="passkey-row"><div><strong>{{ item.name }}</strong><small>{% if item.last_used %} · Last used {{ item.last_used }}{% endif %}</small></div><form method="post" action="{{ url_for('auth.passkey_delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="collection" value="{{ item.collection }}"><input type="hidden" name="record_id" value="{{ item.record_id }}"><button class="tiny subtle" type="submit">Remove</button></form></div>
       {% else %}<div class="empty-state compact"><strong>No passkeys registered</strong><p>Add one to enable passwordless sign-in.</p></div>{% endfor %}
       </div>
     {% else %}
-      <div class="flash warning">The WebAuthn server library is not installed. Rebuild the v3.0.2 image so passkey support can load.</div>
+      <div class="flash warning">The WebAuthn server library is not installed. Rebuild the v3.3.0 image so passkey support can load.</div>
     {% endif %}
   </article>
 </section>
-{% endblock %}
+<section class="card"><h2>Sessions and recovery</h2><a class="button" href="{{ url_for('auth.sessions') }}">Manage signed-in devices</a><a class="button" href="{{ url_for('auth.reauth',next='/account#security') }}">Verify before security changes</a><form method="post" action="{{ url_for('auth.recovery_codes') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Generate new recovery codes</button></form></section>{% endblock %}

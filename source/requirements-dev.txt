@@ -1,0 +1,4 @@
+-r requirements-lock.txt
+pytest==8.3.5
+mongomock==4.3.0
+fakeredis==2.31.0

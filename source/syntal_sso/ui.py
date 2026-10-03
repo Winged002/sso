@@ -7,6 +7,7 @@ def nav_for_request():
     org_id = (org or {}).get("syntal_org_id")
     endpoint = request.endpoint or ""
     category = "overview"
+    if endpoint.startswith("diagnostics."):category="access" if endpoint.endswith("inspector") else "applications"
     if endpoint.startswith("organizations."):
         category = "organization"
     elif endpoint.startswith("applications."):
@@ -15,7 +16,7 @@ def nav_for_request():
         category = "access"
     elif endpoint.startswith("billing."):
         category = "billing"
-    elif endpoint.startswith("auth.account"):
+    elif endpoint.startswith("auth."):
         category = "settings"
 
     def orgurl(endpoint_name, **kwargs):
@@ -43,6 +44,7 @@ def nav_for_request():
         ],
         "applications": [
             ("applications","Applications",orgurl("applications.index"),True),
+            ("diagnostics","Integration diagnostics",orgurl("diagnostics.integrations"),has_permission("syntal.org_apps.manage")),
             ("assignments","Access assignments",orgurl("access.matrix"),has_permission("syntal.roles.read")),
             ("developers","Developer applications",url_for("applications.developers"),has_permission("syntal.org_apps.manage")),
             ("security","Security policy",orgurl("applications.security"),has_permission("syntal.org_apps.manage")),
@@ -50,9 +52,10 @@ def nav_for_request():
         "access": [
             ("roles","Roles",orgurl("access.roles"),True),
             ("permissions","Permissions",orgurl("access.permissions"),True),
+            ("inspector","Member access inspector",orgurl("diagnostics.inspector"),has_permission("syntal.members.read")),
             ("matrix","Access matrix",orgurl("access.matrix"),True),
-            ("decisions","Authorization decisions",orgurl("access.decisions"),has_permission("syntal.audit.read") or has_permission("syntal.roles.read")),
-            ("audit","Audit log",orgurl("access.audit_log"),has_permission("syntal.audit.read") or has_permission("syntal.roles.read")),
+            ("decisions","Authorization decisions",orgurl("access.decisions"),has_permission("syntal.audit.read")),
+            ("audit","Audit log",orgurl("access.audit_log"),has_permission("syntal.audit.read")),
         ],
         "billing": [
             ("overview","Overview",orgurl("billing.overview"),True),
@@ -67,6 +70,7 @@ def nav_for_request():
             ("ownership","Ownership",orgurl("organizations.ownership"),bool(org_id)),
             ("lifecycle","Lifecycle",orgurl("organizations.lifecycle"),bool(org_id)),
             ("account","My account",url_for("auth.account"),True),
+            ("sessions","Your sessions",url_for("auth.sessions"),True),
         ],
     }
     active = active_secondary(endpoint)
@@ -84,6 +88,6 @@ def active_secondary(endpoint):
         "applications.index":"applications","applications.detail":"applications","applications.app_overview":"applications","applications.app_configuration":"applications","applications.app_permissions":"applications","applications.app_roles":"applications","applications.app_members":"applications","applications.app_oauth":"applications","applications.app_secrets":"applications","applications.developers":"developers","applications.security":"security",
         "access.roles":"roles","access.role_detail":"roles","access.permissions":"permissions","access.matrix":"matrix","access.decisions":"decisions","access.audit_log":"audit",
         "billing.overview":"overview","billing.subscriptions":"subscriptions","billing.usage":"usage","billing.invoices":"invoices","billing.invoice_detail":"invoices","billing.profile":"profile",
-        "auth.account":"account",
+        "auth.account":"account","auth.sessions":"sessions","diagnostics.inspector":"inspector","diagnostics.integrations":"diagnostics",
     }
     return mapping.get(endpoint, "dashboard")

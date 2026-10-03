@@ -2,7 +2,9 @@
 
 Central identity, authentication, organization management, application authorization, and access-control infrastructure for the Syntal platform.
 
-**Current release: `v3.1.3`**
+**Current release: `v4.0.0` — Enterprise Identity**
+
+Syntal SSO v4.0.0 is the enterprise identity release built on the v3.3 security line. It preserves the existing Syntal identity and authorization model while adding enterprise federation, SCIM provisioning, machine identities, managed signing-key rotation, and signed event delivery.
 
 Syntal SSO is the shared identity layer used by Syntal applications to answer five fundamental questions:
 
@@ -13,6 +15,22 @@ Syntal SSO is the shared identity layer used by Syntal applications to answer fi
 - **How can every application trust the same identity without implementing authentication independently?**
 
 Instead of every Syntal service maintaining its own users, passwords, sessions, roles, permissions, and organization membership, those responsibilities are centralized in Syntal SSO.
+
+## What v4.0.0 adds
+
+- **Enterprise federation** — upstream OIDC and SAML 2.0 sign-in per organization. Federation transactions are single-use, expire after ten minutes, and are bound to the originating browser. OIDC validates issuer, audience, signature, and nonce. SAML requires a signed response/assertion and validates the configured X.509 certificate, audience, time conditions, and `InResponseTo`.
+- **Proof-based account linking** — a federated identity can reuse an existing Syntal account only when that account is already authenticated in the same browser session. A matching email address alone is not treated as proof of account ownership.
+- **SCIM 2.0 provisioning** — organization-scoped bearer tokens and `/scim/v2/<org>/Users` lifecycle endpoints for user creation, updates, activation, and suspension.
+- **Service accounts** — tenant-scoped client-credentials identities with one-time secrets and application-namespaced permissions. Tokens are short-lived JWTs signed by the SSO issuer.
+- **Managed signing keys** — RSA-3072 keys encrypted at rest with active, retiring, and retired lifecycle states, multi-key JWKS publication, and explicit rotation. The first rotation preserves the previous configured RSA public key as a retiring verification key when possible.
+- **Signed event delivery** — organization webhook subscriptions backed by a durable delivery outbox. Every delivery carries event and delivery IDs plus an HMAC-SHA256 signature with bounded retry backoff.
+- **Enterprise administration UI** — organization administration pages for Federation, SCIM, Service Accounts, Signing Keys, and Event Delivery.
+
+## Security foundation retained from v3.3
+
+v4 retains the v3.3 shared access evaluator, application deny precedence, owner/admin protections, PKCE enforcement, authorization-code consumption, refresh-family reuse revocation, current-policy checks, MFA/session lifecycle controls, API audience enforcement, and organization/application visibility rules.
+
+The v3.3 legacy-index compatibility fix is incorporated into the v4 source. Existing `organizations.slug_1` and `users.email_normalized_1` unique indexes are preserved and supported rather than dropped.
 
 ---
 
@@ -596,6 +614,63 @@ Important deployment tooling is kept under:
 deploy/
 ```
 
+## v4.0.0 release layout
+
+The v4 distribution adds the following release-specific components:
+
+- `source/` — complete application source for v4.0.0.
+- `deploy/install-v400.py` — atomic code installer that preserves environment configuration, Compose files, instance data, and keys.
+- `deploy/preflight-v400.py` — read-only database and configuration preflight.
+- `deploy/migrate-v400.py` — explicit schema migration; `--apply` requires confirmation that a database backup exists.
+- `deploy/validate-v400.py` — source validation, including AST/Jinja checks and the behavioral pytest suite.
+- `deploy/runtime-audit-v400.py` — post-deployment runtime checks.
+- `deploy/event-worker-v400.py` — one event-outbox delivery pass; run repeatedly through cron, systemd, Celery, or an equivalent scheduler.
+- `UPGRADE.md` — deployment order, migration procedure, verification steps, and rollback notes.
+
+## Required secrets and infrastructure
+
+v4 continues to require MongoDB, Redis, a strong `SECRET_KEY`, the existing `ACCOUNT_SECRET_ENCRYPTION_KEY`, SMTP configuration, and a persistent OIDC RSA private key during bootstrap.
+
+Do **not** replace `ACCOUNT_SECRET_ENCRYPTION_KEY` during an upgrade. It protects existing MFA/account material as well as new federation, webhook, and signing-key secrets.
+
+The recommended production signing algorithm remains RS256. Legacy HS256 remains an explicit compatibility mode only.
+
+## v4 deployment gate
+
+Do not start the v4 web service immediately after copying the new files.
+
+The intended production sequence is:
+
+```text
+Stop web service
+        ↓
+Create and verify MongoDB backup
+        ↓
+Install v4 source
+        ↓
+Rebuild container
+        ↓
+Run preflight
+        ↓
+Run explicit migration
+        ↓
+Run source validation
+        ↓
+Start service
+        ↓
+Run runtime audit
+        ↓
+Functional verification
+```
+
+See `UPGRADE.md` for the exact deployment and rollback sequence.
+
+## Upgrade compatibility
+
+v4 is designed as an in-place upgrade from the v3.3 line. It preserves existing users, organization memberships, enrolled MFA/passkeys, applications, entitlements, and authorization records.
+
+New collections and indexes are additive. The installer does not modify the database. Database changes occur only when `deploy/migrate-v400.py --apply --backup-confirmed` is executed.
+
 ---
 
 # Development
@@ -674,7 +749,7 @@ Confirms that the expected implementation is present before deployment.
 Example:
 
 ```bash
-python3 deploy/validate-v313.py source
+python3 deploy/validate-v400.py source
 ```
 
 ## Runtime audit
@@ -692,7 +767,7 @@ Both checks should be performed for production updates.
 
 ---
 
-# Current Release
+# Previous Compatibility Release
 
 ## v3.1.3 — Assignment ID Compatibility
 
@@ -1059,37 +1134,50 @@ Administrators should have one place to determine who belongs to an organization
 Current production line:
 
 ```text
-Syntal SSO v3.1.3
+Syntal SSO v4.0.0 — Enterprise Identity
 ```
 
-Primary change:
+Primary additions:
 
 ```text
-Assignment ID compatibility for legacy MongoDB indexes.
+Enterprise OIDC/SAML federation
+SCIM 2.0 provisioning
+Service accounts
+Managed RSA signing-key rotation
+Signed webhook/event delivery
+Enterprise administration UI
 ```
 
-Migration required:
+Upgrade model:
 
 ```text
-No
-```
-
-Index modification required:
-
-```text
-No
+In-place upgrade from the v3.3 line
+Explicit preflight + backup-gated migration
+Existing identity and authorization data preserved
 ```
 
 Deployment validation:
 
 ```text
-deploy/validate-v313.py
+deploy/validate-v400.py
 ```
 
 Runtime validation:
 
 ```text
-deploy/runtime-audit-v313.py
+deploy/runtime-audit-v400.py
+```
+
+Migration:
+
+```text
+deploy/migrate-v400.py --apply --backup-confirmed
+```
+
+Upgrade procedure:
+
+```text
+UPGRADE.md
 ```
 
 ---
@@ -1098,6 +1186,6 @@ deploy/runtime-audit-v313.py
 
 Syntal SSO is active infrastructure for the Syntal platform.
 
-Changes to authentication, OIDC behavior, organization resolution, entitlements, application registration, the Access Matrix, or permission enforcement should be treated as platform-level changes because they may affect multiple connected applications.
+Changes to authentication, OIDC/SAML federation, organization resolution, SCIM provisioning, service accounts, signing keys, event delivery, entitlements, application registration, the Access Matrix, or permission enforcement should be treated as platform-level changes because they may affect multiple connected applications.
 
 Security-sensitive changes should always be validated in both source and deployed runtime environments before being considered complete.

@@ -1,8 +1,8 @@
 import os
 
 class Config:
-    VERSION = "3.1.3"
-    SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("FLASK_SECRET_KEY") or "dev-only-change-me"
+    VERSION = "4.0.0"
+    SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("FLASK_SECRET_KEY") or ""
     MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongo:27017/syntal_identity")
     MONGO_DB = os.environ.get("MONGO_DB", "syntal_identity")
     REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
@@ -14,15 +14,15 @@ class Config:
     SESSION_TYPE = "redis"
     SESSION_PERMANENT = False
     SESSION_USE_SIGNER = True
-    SESSION_KEY_PREFIX = "syntal:sso:v3:"
+    SESSION_KEY_PREFIX = "syntal:sso:v4:"
     PREFERRED_URL_SCHEME = "https"
     OIDC_ISSUER = os.environ.get("OIDC_ISSUER", PUBLIC_BASE_URL).rstrip("/")
     OIDC_PRIVATE_KEY = os.environ.get("OIDC_PRIVATE_KEY", "") or os.environ.get("JWT_PRIVATE_KEY", "")
     OIDC_PRIVATE_KEY_FILE = os.environ.get("OIDC_PRIVATE_KEY_FILE", "") or os.environ.get("JWT_PRIVATE_KEY_FILE", "")
-    OIDC_KEY_ID = os.environ.get("OIDC_KEY_ID", "syntal-v3")
+    OIDC_KEY_ID = os.environ.get("OIDC_KEY_ID", "syntal-v4-bootstrap")
     OIDC_HS256_SECRET = os.environ.get("OIDC_HS256_SECRET", "")
-    ACCESS_TOKEN_TTL = int(os.environ.get("ACCESS_TOKEN_TTL", "3600"))
-    ID_TOKEN_TTL = int(os.environ.get("ID_TOKEN_TTL", "3600"))
+    ACCESS_TOKEN_TTL = int(os.environ.get("ACCESS_TOKEN_TTL", "300"))
+    ID_TOKEN_TTL = int(os.environ.get("ID_TOKEN_TTL", "300"))
     REFRESH_TOKEN_TTL = int(os.environ.get("REFRESH_TOKEN_TTL", str(60*60*24*30)))
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
@@ -42,3 +42,15 @@ class Config:
     SMTP_USE_TLS = (os.environ.get("SMTP_USE_TLS") or os.environ.get("MAIL_USE_TLS") or "true").strip().lower() in {"1","true","yes","on"}
     SMTP_USE_SSL = (os.environ.get("SMTP_USE_SSL") or os.environ.get("MAIL_USE_SSL") or "false").strip().lower() in {"1","true","yes","on"}
     SMTP_TIMEOUT = int(os.environ.get("SMTP_TIMEOUT", "12"))
+
+    SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", "43200"))
+    STEP_UP_MAX_AGE = int(os.environ.get("STEP_UP_MAX_AGE", "300"))
+    MAX_CONTENT_LENGTH = 1024 * 1024
+    API_AUDIENCE = os.environ.get("API_AUDIENCE", "syntal-api")
+    INVITATION_TTL = int(os.environ.get("INVITATION_TTL", "604800"))
+    REQUIRE_EMAIL_VERIFICATION = True
+    LEGACY_API_CLIENT_IDS = [x.strip() for x in os.environ.get("LEGACY_API_CLIENT_IDS", "").split(",") if x.strip()]
+    OIDC_ALLOW_HS256 = os.environ.get("OIDC_ALLOW_HS256", "false").lower() in {"true", "1"}
+
+    SERVICE_TOKEN_TTL = int(os.environ.get("SERVICE_TOKEN_TTL", "300"))
+    EVENT_WORKER_BATCH = int(os.environ.get("EVENT_WORKER_BATCH", "50"))

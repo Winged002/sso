@@ -151,3 +151,31 @@ def verify_totp(secret: str | None, code: str | None, *, window: int = 1, timest
 def provisioning_uri(secret: str, email: str, issuer: str = "Syntal") -> str:
     label = quote(f"{issuer}:{email}", safe="")
     return f"otpauth://totp/{label}?secret={quote(secret)}&issuer={quote(issuer)}&algorithm=SHA1&digits=6&period=30"
+
+def verify_totp_once(user, code):
+    """Atomically claim one accepted time-step; codes cannot be replayed."""
+    from .db import db
+    from .util import utcnow
+    from datetime import timedelta
+    from pymongo.errors import DuplicateKeyError
+    secret=totp_secret_for_user(user)
+    normalized=str(code or '').strip()
+    if not secret or len(normalized)!=6 or not normalized.isascii() or not normalized.isdigit():return False
+    now=int(time.time())
+    for shift in (-1,0,1):
+        step=now//30+shift
+        if hmac.compare_digest(totp_at(secret,step*30),normalized):
+            identity=hashlib.sha256(secret.encode()).hexdigest()[:16]
+            try:db().security_otp_uses.insert_one({'_id':f"{user['syntal_user_id']}:{identity}:{step}",'expire_at':utcnow()+timedelta(minutes=5)})
+            except DuplicateKeyError:return False
+            return True
+    return False
+
+
+def consume_recovery_code(user, code):
+    from .db import db
+    normalized=str(code or '').replace('-','').replace(' ','').upper()
+    if len(normalized)!=24:return False
+    digest=hashlib.sha256(normalized.encode()).hexdigest()
+    result=db().users.update_one({'_id':user['_id'],'recovery_code_hashes':digest},{'$pull':{'recovery_code_hashes':digest}})
+    return result.modified_count==1

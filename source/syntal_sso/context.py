@@ -2,6 +2,7 @@ from bson import ObjectId
 from flask import g, session
 from .db import db
 from .acl import effective_permissions_for_membership
+from .lifecycle import active_user, valid_session
 
 
 def _user_by_session_id(value):
@@ -26,7 +27,9 @@ def load_request_context():
     g.permissions = set()
     uid = session.get("user_id") or session.get("syntal_user_id") or session.get("uid")
     g.user = _user_by_session_id(uid)
-    if not g.user:
+    if not active_user(g.user) or not valid_session(session.get("auth_session_id"), (g.user or {}).get("syntal_user_id"), session.get("session_epoch")):
+        g.user=None
+        if uid:session.clear()
         return
     user_id = g.user.get("syntal_user_id") or str(g.user.get("_id"))
     org_id = session.get("org_id") or session.get("organization_id")
@@ -39,7 +42,7 @@ def load_request_context():
             org_id = membership.get("syntal_org_id")
             session["org_id"] = org_id
     if membership and org_id:
-        org = db().organizations.find_one({"syntal_org_id": org_id, "status": {"$ne": "deleted"}})
+        org = db().organizations.find_one({"syntal_org_id": org_id, "status": "active"})
         if org:
             g.membership = membership
             g.organization = org
